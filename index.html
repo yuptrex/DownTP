@@ -230,14 +230,24 @@
 </footer>
 
 <script>
-  // Verifies the APK actually exists and has real content before letting the
-  // browser attempt the download. Helps catch the "0.00 KB / file not found"
-  // case (broken path, LFS pointer file, failed upload) and shows a clear
-  // error instead of a silent failed download.
+  // Verifies the APK responds before triggering the download, but never
+  // blocks the actual download on an inconclusive check — GitHub Pages'
+  // CDN doesn't always return content-length on HEAD requests, so the
+  // check only fails loudly on a real HTTP error (404/403/etc), not on
+  // a missing header.
   const btn = document.getElementById('downloadBtn');
   const btnLabel = document.getElementById('btnLabel');
   const errorBox = document.getElementById('downloadError');
   const APK_PATH = 'TextPro.apk';
+
+  function triggerDownload() {
+    const link = document.createElement('a');
+    link.href = APK_PATH;
+    link.download = 'TextPro.apk';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }
 
   btn.addEventListener('click', async function (e) {
     e.preventDefault();
@@ -247,25 +257,26 @@
 
     try {
       const res = await fetch(APK_PATH, { method: 'HEAD', cache: 'no-store' });
-      const size = parseInt(res.headers.get('content-length') || '0', 10);
 
-      if (!res.ok || size < 100000) {
-        // Under ~100KB is almost certainly a broken link, 404 page,
-        // or a Git LFS pointer file rather than the real APK.
-        throw new Error('File missing or too small: ' + size + ' bytes');
+      if (!res.ok) {
+        // A real HTTP error (404, 403, etc) — the file genuinely isn't there.
+        throw new Error('HTTP ' + res.status);
       }
 
+      const lenHeader = res.headers.get('content-length');
+      if (lenHeader !== null && parseInt(lenHeader, 10) < 50000) {
+        // Header IS present and clearly too small — likely an LFS pointer
+        // file or a 404 page served with a 200 status.
+        throw new Error('File too small: ' + lenHeader + ' bytes');
+      }
+
+      // Either the size looks right, or the header just wasn't sent
+      // (common on GitHub Pages) — proceed with the download either way.
       btnLabel.textContent = 'Download for Android';
       btn.classList.remove('loading');
-
-      const link = document.createElement('a');
-      link.href = APK_PATH;
-      link.download = 'TextPro.apk';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+      triggerDownload();
     } catch (err) {
-      console.error('Download check failed:', err);
+      console.error('Download pre-check failed:', err);
       btn.classList.remove('loading');
       btnLabel.textContent = 'Download for Android';
       errorBox.classList.add('show');
