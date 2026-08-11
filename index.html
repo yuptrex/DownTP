@@ -170,10 +170,18 @@
   .download-btn:hover::before{transform:translateX(120%);transition:transform .7s ease;}
   .download-btn:active{transform:scale(0.98);}
   .download-btn svg{width:18px;height:18px;}
+  .download-btn.loading{pointer-events:none;opacity:0.7;}
   .file-meta-line{
     font-size:12px;color:var(--muted);
     opacity:0;animation:fade-up .7s ease .9s forwards;
   }
+  .download-error{
+    font-size:12px;color:#ff6b6b;
+    display:none;
+    max-width:320px;
+    line-height:1.5;
+  }
+  .download-error.show{display:block;}
 
   footer.bottom-bar{
     position:relative;z-index:2;flex-shrink:0;
@@ -201,22 +209,70 @@
 
 <main>
   <div class="logo-visual">
-    <img src="TP.png" alt="Z5META">
+    <img src="TP.png" alt="TextPro logo">
   </div>
 
   <div class="tagline">Connect • Share • Loop</div>
   <p class="sub">Find and connect with your close ones</p>
 
-  <a href="TextPro.apk" download class="download-btn">
+  <a href="TextPro.apk" download="TextPro.apk" class="download-btn" id="downloadBtn">
     <svg><use href="#icon-download"/></svg>
-    Download for Android
+    <span id="btnLabel">Download for Android</span>
   </a>
-  <div class="file-meta-line">Android · v2.5.0 · 24.8 MB</div>
+  <div class="file-meta-line">Android · v2.5.0 · 7 MB</div>
+  <div class="download-error" id="downloadError">
+    File not found or failed to load. Make sure TextPro.apk is committed to the repo root (not tracked via Git LFS) and try again.
+  </div>
 </main>
 
 <footer class="bottom-bar">
   © 2026 TextPro. Independent Android release.
 </footer>
 
+<script>
+  // Verifies the APK actually exists and has real content before letting the
+  // browser attempt the download. Helps catch the "0.00 KB / file not found"
+  // case (broken path, LFS pointer file, failed upload) and shows a clear
+  // error instead of a silent failed download.
+  const btn = document.getElementById('downloadBtn');
+  const btnLabel = document.getElementById('btnLabel');
+  const errorBox = document.getElementById('downloadError');
+  const APK_PATH = 'TextPro.apk';
+
+  btn.addEventListener('click', async function (e) {
+    e.preventDefault();
+    errorBox.classList.remove('show');
+    btn.classList.add('loading');
+    btnLabel.textContent = 'Checking file…';
+
+    try {
+      const res = await fetch(APK_PATH, { method: 'HEAD', cache: 'no-store' });
+      const size = parseInt(res.headers.get('content-length') || '0', 10);
+
+      if (!res.ok || size < 100000) {
+        // Under ~100KB is almost certainly a broken link, 404 page,
+        // or a Git LFS pointer file rather than the real APK.
+        throw new Error('File missing or too small: ' + size + ' bytes');
+      }
+
+      btnLabel.textContent = 'Download for Android';
+      btn.classList.remove('loading');
+
+      const link = document.createElement('a');
+      link.href = APK_PATH;
+      link.download = 'TextPro.apk';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (err) {
+      console.error('Download check failed:', err);
+      btn.classList.remove('loading');
+      btnLabel.textContent = 'Download for Android';
+      errorBox.classList.add('show');
+    }
+  });
+</script>
+
 </body>
 </html>
+
